@@ -47,6 +47,19 @@ Regras obrigatórias:
 Retorne APENAS o JSON, sem texto antes ou depois."""
 
 
+def carrega_env(path):
+    """Lê um arquivo .env simples (CHAVE=valor) e define variáveis não definidas."""
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8-sig") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            chave, valor = line.split("=", 1)
+            os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
+
+
 def encode_image(path):
     mime, _ = mimetypes.guess_type(path)
     if mime not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
@@ -173,13 +186,18 @@ def main():
     parser.add_argument("--saida", help="salvar o plano em um arquivo JSON")
     args = parser.parse_args()
 
+    pasta_script = os.path.dirname(os.path.abspath(__file__))
+    carrega_env(os.path.join(pasta_script, ".env"))
+    carrega_env(".env")
+
     api_key = os.environ.get("MISTRAL_API_KEY")
     if not api_key:
         sys.exit(
-            "Defina a variável de ambiente MISTRAL_API_KEY antes de usar.\n"
-            "Exemplos:\n"
-            "  Linux/macOS:  export MISTRAL_API_KEY=sua-chave\n"
-            "  Windows:      set MISTRAL_API_KEY=sua-chave"
+            "Chave não encontrada. Escolha uma das opções:\n"
+            "  1) Crie o arquivo .env na pasta do projeto com a linha:\n"
+            "       MISTRAL_API_KEY=sua-chave\n"
+            "  2) Ou no terminal:  export MISTRAL_API_KEY=sua-chave   (Linux/macOS)\n"
+            "  3) Ou no PowerShell: $env:MISTRAL_API_KEY=\"sua-chave\""
         )
 
     if not os.path.isfile(args.imagem):
