@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tradex · Copiloto de trade</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --borda:#30363d; --texto:#e6edf3; --cinza:#8b949e;
+          --verde:#3fb950; --vermelho:#f85149; --amarelo:#d29922; --azul:#58a6ff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--texto); font-family:system-ui,Segoe UI,Arial,sans-serif; padding:24px; }
+  .container { max-width:860px; margin:0 auto; }
+  h1 { font-size:1.6rem; margin-bottom:4px; } h1 span { color:var(--verde); }
+  .sub { color:var(--cinza); margin-bottom:20px; font-size:.95rem; }
+  .card { background:var(--card); border:1px solid var(--borda); border-radius:10px; padding:18px; margin-bottom:16px; }
+  .zone { border:2px dashed var(--borda); border-radius:10px; padding:34px 18px; text-align:center;
+          cursor:pointer; transition:border-color .2s, background .2s; }
+  .zone:hover, .zone.drag { border-color:var(--azul); background:#161d27; }
+  .zone img { max-width:100%; max-height:340px; border-radius:8px; margin-top:12px; }
+  .params { display:flex; gap:12px; flex-wrap:wrap; margin-top:16px; }
+  .params label { flex:1; min-width:140px; font-size:.85rem; color:var(--cinza); display:flex; flex-direction:column; gap:6px; }
+  .params input { background:#0d1117; color:var(--texto); border:1px solid var(--borda); border-radius:8px; padding:10px; font-size:1rem; }
+  button { background:var(--verde); border:none; color:#0d1117; font-weight:700; font-size:1rem;
+           padding:13px; border-radius:8px; cursor:pointer; width:100%; margin-top:16px; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .erro { background:#2d1518; border:1px solid var(--vermelho); color:#ffb3ab; border-radius:8px; padding:14px; margin-top:14px; display:none; white-space:pre-wrap; }
+  .carregando { text-align:center; padding:26px; color:var(--cinza); display:none; }
+  .spinner { display:inline-block; width:26px; height:26px; border:3px solid var(--borda);
+             border-top-color:var(--verde); border-radius:50%; animation:girar 1s linear infinite; }
+  @keyframes girar { to { transform:rotate(360deg); } }
+  .hidden { display:none; }
+  .cabecalho { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  .selo { padding:5px 14px; border-radius:999px; font-weight:800; font-size:.9rem; }
+  .compra { background:rgba(63,185,80,.15); color:var(--verde); border:1px solid var(--verde); }
+  .venda  { background:rgba(248,81,73,.15); color:var(--vermelho); border:1px solid var(--vermelho); }
+  .aguardar { background:rgba(210,153,34,.15); color:var(--amarelo); border:1px solid var(--amarelo); }
+  .titulo-secao { color:var(--azul); font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; margin:14px 0 8px; }
+  .grid-niveis { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; }
+  .nivel { background:#0d1117; border:1px solid var(--borda); border-radius:8px; padding:10px; }
+  .nivel .rotulo { color:var(--cinza); font-size:.75rem; margin-bottom:4px; }
+  .nivel .valor { font-size:1.05rem; font-weight:700; }
+  .nivel.stop .valor { color:var(--vermelho); } .nivel.alvo .valor { color:var(--verde); }
+  .linha { margin-bottom:8px; line-height:1.5; font-size:.93rem; }
+  .linha b { color:var(--cinza); font-weight:600; }
+  .check { display:flex; gap:8px; align-items:flex-start; padding:5px 0; font-size:.93rem; }
+  .check.ok::before { content:"✅"; } .check.nao::before { content:"❌"; } .check.na::before { content:"❔"; }
+  .estat { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; }
+  .estat div { background:#0d1117; border:1px solid var(--borda); border-radius:8px; padding:8px 14px; font-size:.85rem; }
+  .rodape { color:var(--cinza); font-size:.78rem; text-align:center; margin-top:18px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Tradex<span> ▲</span></h1>
+  <p class="sub">Envie o print do gráfico — receba entrada, stop, alvos e gestão de risco.</p>
+
+  <div class="card">
+    <div class="zone" id="zone">
+      <div id="zonaDica">📊 Arraste o print do gráfico aqui<br><small style="color:var(--cinza)">ou clique para escolher o arquivo (PNG / JPEG)</small></div>
+      <img id="preview" alt="" class="hidden">
+      <input type="file" id="arquivo" accept="image/png,image/jpeg,image/webp" style="display:none">
+    </div>
+    <div class="params">
+      <label>Capital (R$) <input id="capital" type="number" value="10000" min="0" step="any"></label>
+      <label>Risco por trade (%) <input id="risco" type="number" value="1" min="0.1" max="100" step="any"></label>
+      <label>Valor por ponto/contrato <input id="multiplicador" type="number" value="1" min="0" step="any"></label>
+    </div>
+    <button id="botao">⚡ Analisar gráfico</button>
+    <div class="carregando" id="carregando"><span class="spinner"></span><p>Analisando o gráfico com IA (10-60 s)…</p></div>
+    <div class="erro" id="erro"></div>
+  </div>
+
+  <div class="card hidden" id="resultado">
+    <div class="cabecalho">
+      <div><b id="rAtivo">—</b> <span style="color:var(--cinza)" id="rTimeframe"></span></div>
+      <span class="selo" id="rSelo">—</span>
+    </div>
+    <div class="titulo-secao">Níveis</div>
+    <div class="grid-niveis" id="niveis"></div>
+    <div id="checkTitulo" class="titulo-secao hidden">Checklist de disciplina</div>
+    <div id="checklist"></div>
+    <div class="titulo-secao">Contexto</div>
+    <div class="linha"><b>Tendência:</b> <span id="rTendencia">—</span></div>
+    <div class="linha"><b>Padrões:</b> <span id="rPadroes">—</span></div>
+    <div class="linha"><b>Indicadores:</b> <span id="rIndicadores">—</span></div>
+    <div class="linha"><b>Macro / fundamentos:</b> <span id="rMacro">—</span></div>
+    <div class="titulo-secao">Gestão da operação</div>
+    <div class="linha"><b>Parcial:</b> <span id="rParcial">—</span></div>
+    <div class="linha"><b>Ajuste de stop:</b> <span id="rAjuste">—</span></div>
+    <div class="estat" id="estatisticas"></div>
+    <div class="titulo-secao">Leitura</div>
+    <div class="linha"><b>Justificativa:</b> <span id="rJust">—</span></div>
+    <div class="linha"><b>Plano B (cenário alternativo):</b> <span id="rPlanob">—</span></div>
+    <div class="linha"><b>Invalidação:</b> <span id="rInvalid">—</span></div>
+    <div class="linha"><b>Confiança:</b> <span id="rConf">—</span></div>
+  </div>
+
+  <p class="rodape">Análise gerada por IA a partir de uma imagem — confira os níveis no seu gráfico antes de operar.<br>Não é recomendação de investimento.</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const zone = $("zone"), arquivo = $("arquivo"), preview = $("preview");
+let imagemAtual = null;
+
+zone.addEventListener("click", () => arquivo.click());
+zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer.files[0]) carregar(e.dataTransfer.files[0]); });
+arquivo.addEventListener("change", () => { if (arquivo.files[0]) carregar(arquivo.files[0]); });
+
+function carregar(f) {
+  if (!/^image\/(png|jpeg|webp)$/.test(f.type)) return mostrarErro("Formato não suportado — use PNG, JPEG ou WEBP.");
+  imagemAtual = f;
+  const ini = new FileReader();
+  ini.onload = () => { preview.src = ini.result; preview.classList.remove("hidden"); $("zonaDica").textContent = f.name + " — clique para trocar"; };
+  ini.readAsDataURL(f);
+  fecharErro();
+}
+
+function mostrarErro(msg) { const e = $("erro"); e.textContent = msg; e.style.display = "block"; $("carregando").style.display = "none"; $("botao").disabled = false; }
+function fecharErro() { $("erro").style.display = "none"; }
+
+$("botao").addEventListener("click", async () => {
+  if (!imagemAtual) return mostrarErro("Envie o print do gráfico antes de analisar.");
+  fecharErro();
+  $("botao").disabled = true; $("carregando").style.display = "block"; $("resultado").classList.add("hidden");
+  try {
+    const b64 = await new Promise((ok, fail) => {
+      const r = new FileReader();
+      r.onload = () => ok(r.result.split(",")[1]);
+      r.onerror = fail;
+      r.readAsDataURL(imagemAtual);
+    });
+    const resposta = await fetch("/analisar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imagem_b64: b64,
+        mime: imagemAtual.type,
+        nome_arquivo: imagemAtual.name,
+        capital: $("capital").value,
+        risco: $("risco").value,
+        multiplicador: $("multiplicador").value,
+      }),
+    });
+    const dados = await resposta.json();
+    if (dados.erro) return mostrarErro(dados.erro);
+    render(dados);
+  } catch (err) {
+    mostrarErro("Falha de conexão com o servidor local: " + err);
+  } finally {
+    $("carregando").style.display = "none";
+    $("botao").disabled = false;
+  }
+});
+
+function fmt(v) { return (v === null || v === undefined || v === "") ? "—" : v; }
+function lista(v) { return Array.isArray(v) ? (v.length ? v.join(" · ") : "—") : fmt(v); }
+
+function render(dados) {
+  const p = dados.plano || {}, g = dados.gestao;
+  $("rAtivo").textContent = fmt(p.ativo);
+  $("rTimeframe").textContent = fmt(p.timeframe);
+  const selo = $("rSelo"), dir = (p.direcao || "aguardar").toLowerCase();
+  selo.textContent = dir.toUpperCase();
+  selo.className = "selo " + (["compra", "venda"].includes(dir) ? dir : "aguardar");
+
+  const niveis = $("niveis"); niveis.innerHTML = "";
+  const addN = (rotulo, valor, cls) => {
+    if (valor === null || valor === undefined) return;
+    niveis.insertAdjacentHTML("beforeend",
+      `<div class="nivel ${cls}"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div></div>`);
+  };
+  addN("Entrada", fmt(p.entrada), ""); addN("Stop loss", fmt(p.stop_loss), "stop");
+  addN("Alvo 1", fmt(p.alvo1), "alvo"); addN("Alvo 2", fmt(p.alvo2), "alvo");
+
+  const check = $("checklist"); check.innerHTML = "";
+  const itens = p.checklist || [];
+  $("checkTitulo").classList.toggle("hidden", !itens.length);
+  let confirmados = 0;
+  itens.forEach(item => {
+    const ok = item.confirmado === true; if (ok) confirmados++;
+    const classe = item.confirmado === true ? "ok" : (item.confirmado === false ? "nao" : "na");
+    check.insertAdjacentHTML("beforeend", `<div class="check ${classe}"><span>${item.criterio || "critério"}</span></div>`);
+  });
+  if (itens.length) check.insertAdjacentHTML("beforeend", `<div class="linha" style="color:var(--cinza)">Critérios confirmados: ${confirmados}/${itens.length}</div>`);
+
+  const c = p.contexto || {};
+  $("rTendencia").textContent = fmt(c.tendencia);
+  $("rPadroes").textContent = lista(c.padroes);
+  $("rIndicadores").textContent = fmt(c.indicadores);
+  $("rMacro").textContent = fmt(c.fundamento_macro);
+
+  const go = p.gestao_da_operacao || {};
+  $("rParcial").textContent = fmt(go.parcial);
+  $("rAjuste").textContent = fmt(go.ajuste_stop);
+
+  const est = $("estatisticas"); est.innerHTML = "";
+  const addE = txt => est.insertAdjacentHTML("beforeend", `<div>${txt}</div>`);
+  if (g) {
+    addE(`💰 Risco: ${g.risco_financeiro}`);
+    addE(`📏 Entrada→Stop: ${g.distancia_entrada_stop}`);
+    addE(`📦 Tamanho: ${g.tamanho_posicao}`);
+    addE(`🎯 R:R alvo 1: ${g.r_alvo1}`); addE(`🎯 R:R alvo 2: ${g.r_alvo2}`);
+  } else {
+    addE("Sem operação — paciência também é uma decisão de trader.");
+  }
+
+  $("rJust").textContent = fmt(p.justificativa);
+  $("rPlanob").textContent = fmt(p.cenario_alternativo);
+  $("rInvalid").textContent = fmt(p.invalidacao);
+  $("rConf").textContent = fmt(p.confianca);
+
+  $("resultado").classList.remove("hidden");
+  $("resultado").scrollIntoView({ behavior: "smooth" });
+}
+</script>
+</body>
+</html>

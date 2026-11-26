@@ -43,6 +43,19 @@ python tradex.py grafico.png
 Onde `grafico.png` é o print do gráfico que você quer analisar (o arquivo
 precisa estar na mesma pasta, ou use o caminho completo).
 
+### Modo web (recomendado)
+
+Interface no navegador: arraste o print, informe capital/risco e veja o plano
+em cartões organizados:
+
+```
+python servidor.py
+```
+
+O navegador abre sozinho em http://127.0.0.1:8765. O servidor roda apenas na
+sua máquina (127.0.0.1) e hospeda o servidor local — a chave fica no `.env` e
+nunca vai para o navegador.
+
 Para configurar seu capital e risco por trade:
 
 ```
@@ -119,7 +132,9 @@ $env:MISTRAL_API_KEY="sua-chave"
 ## Estrutura do projeto
 
 ```
-tradex.py           CLI principal (visão + análise + gestão de risco)
+tradex.py           Motor de análise (visão + gestão de risco + diário) — usado pelo CLI e pela web
+servidor.py         Servidor local do modo web (abre o navegador em 127.0.0.1:8765)
+index.html          Página do modo web (arrastar e soltar o gráfico)
 requirements.txt    sem dependências (Python padrão)
 .env.example        Modelo do arquivo .env
 ```
