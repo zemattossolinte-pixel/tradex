@@ -104,7 +104,26 @@ class Handler(BaseHTTPRequestHandler):
         print(f"[{self.address_string()}] {formato % args}")
 
 
+def ip_local():
+    import socket
+    soquete = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        soquete.connect(("8.8.8.8", 80))
+        return soquete.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        soquete.close()
+
+
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Tradex Web (servidor local)")
+    parser.add_argument("--porta", type=int, default=PORTA, help="porta do servidor (default: 8765)")
+    parser.add_argument("--rede", action="store_true",
+                        help="abrir o acesso para outros aparelhos da sua rede Wi-Fi (celular/tablet)")
+    args = parser.parse_args()
+
     tradex.carrega_env(os.path.join(PASTA_SCRIPT, ".env"))
     if not os.environ.get("MISTRAL_API_KEY"):
         print("!! Chave não encontrada: crie o arquivo .env na pasta do projeto com MISTRAL_API_KEY=sua-chave")
