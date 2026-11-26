@@ -29,7 +29,8 @@ Analise o gráfico enviado considerando o ativo, o timeframe e a escala de preç
 
 Responda a análise em português e ESTRITAMENTE em JSON, com este formato:
 {
-  "ativo": "nome do ativo lido da imagem ou 'desconhecido'",
+  "ativo": "nome do ativo lido da imagem (deve COINCIDIR com ticker_lido) ou 'desconhecido'",
+  "ticker_lido": "transcrição exata do texto do ticker visível na imagem",
   "timeframe": "timeframe visível ou 'desconhecido'",
   "direcao": "compra" | "venda" | "aguardar",
   "contexto": {
@@ -65,7 +66,9 @@ Regras obrigatórias:
 - Stop deve ficar atrás de uma estrutura (topo/fundo/pavio), não em distância arbitrária.
 - "entrada" deve SEMPRE ser um número: para gatilho de rompimento, use o nível do rompimento (ex: "venda no rompimento de 6970" => "entrada": 6970).
 - Confira ativo e timeframe LENDO o texto do gráfico: se o ticker não estiver legível na imagem, escreva "desconhecido" — nunca chute o ativo. Verifique também exatamente o timeframe indicado na imagem (ex: "1m", "5m", "1D", "1W").
-- Antes de responder, calcule: (abs(alvo1 - entrada) / abs(entrada - stop_loss)). Se o resultado for menor que 2, mude "direcao" para "aguardar" e explique em "justificativa" — regra R:R >= 2:1 NÃO SABOTE, é a regra mais importante do plano.
+- Antes de responder, calcule: (abs(alvo1 - entrada) / abs(entrada - stop_loss)). Se o resultado for menor que 2, mude "direcao" para "aguardar" e explique em "justificativa" — a regra R:R >= 2:1 é a mais importante do plano, não pode ser violada.
+- No campo "ticker_lido", transcreva CARACTERE POR CARACTERE o código do ativo que aparece na imagem (ex: "B3SA3", "WDOFUT", "PETR4"). Nunca confunda os dois: são empresas/assets completamentes diferentes.
+- Respeite a notação numérica do eixo de preços: escreva o número exatamente como está no gráfico (ex: "354.03" é trezentos e cinquenta e quatro reais e três centavos — não 354.032 mil). Nunca multiplique por 1000.
 - Nunca use confiança "alta" se a sua própria leitura estiver incerta (use palavras como "possivelmente/provavelmente" => confiança "baixa" ou "média").
 - Se a imagem estiver ilegível, sem preços claros ou o cenário for fraco, use "direcao": "aguardar" e explique o motivo em "justificativa".
 
@@ -265,6 +268,40 @@ def valida_plano(plano):
                         f"REVISAR: o R:R do alvo 1 e {round(rr1, 2)}:1, abaixo do minimo de 2:1."
                         " Reavalie stop ou alvos, ou descarte a operacao."
                     )
+    ticker = plano.get("ticker_lido")
+    ativo = plano.get("ativo")
+    if isinstance(ticker, str) and isinstance(ativo, str) and ticker.strip() and ativo.strip():
+        tt, aa = ticker.strip().upper(), ativo.strip().upper()
+        if tt != "DESCONHECIDO" and tt not in aa and aa not in tt:
+            avisos.append(
+                f"CONFERIR ATIVO: o texto legivel no grafico parece ser '{ticker}' "
+                f"mas a analise diz '{ativo}'. Rode de novo com um print mais legivel."
+            )
+
+    campos_texto = ["ticker_lido", "justificativa", "cenario_alternativo", "invalidacao", "confianca"]
+    for campo in campos_texto:
+        valor = plano.get(campo)
+        if isinstance(valor, (dict, list)):
+            plano[campo] = json.dumps(valor, ensure_ascii=False)
+
+    contexto = plano.get("contexto")
+    if isinstance(contexto, dict):
+        for campo in ("tendencia", "indicadores", "fundamento_macro"):
+            valor = contexto.get(campo)
+            if isinstance(valor, (dict, list)):
+                contexto[campo] = json.dumps(valor, ensure_ascii=False)
+        for campo in ("suportes", "resistencias", "padroes"):
+            valor = contexto.get(campo)
+            if isinstance(valor, (dict, str)):
+                contexto[campo] = json.dumps(valor, ensure_ascii=False)
+
+    go = plano.get("gestao_da_operacao")
+    if isinstance(go, dict):
+        for campo in ("parcial", "ajuste_stop"):
+            valor = go.get(campo)
+            if isinstance(valor, (dict, list)):
+                go[campo] = json.dumps(valor, ensure_ascii=False)
+
     plano["avisos"] = avisos
     return plano
 

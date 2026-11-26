@@ -163,7 +163,10 @@ function lista(v) { return Array.isArray(v) ? (v.length ? v.join(" · ") : "—"
 
 function render(dados) {
   const p = dados.plano || {}, g = dados.gestao;
-  $("rAtivo").textContent = fmt(p.ativo);
+  const tl = fmt(p.ticker_lido);
+  $("rAtivo").textContent = (tl !== "—" && p.ativo && p.ativo !== tl)
+    ? p.ativo + "   (lido no gráfico: " + tl + ")"
+    : fmt(p.ativo);
   $("rTimeframe").textContent = fmt(p.timeframe);
   const selo = $("rSelo"), dir = (p.direcao || "aguardar").toLowerCase();
   selo.textContent = dir.toUpperCase();
