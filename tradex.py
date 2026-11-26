@@ -81,9 +81,10 @@ def lista_modelos(api_key):
 
 
 CANDIDATOS_MODELO = [
-    "mistral-medium-latest",
     "mistral-small-latest",
     "ministral-3-14b-latest",
+    "ministral-3-8b-latest",
+    "mistral-medium-latest",
     "mistral-large-latest",
     "magistral-medium-latest",
 ]
@@ -102,7 +103,7 @@ def escolhe_modelo(api_key):
         if "vision" in caps and not caps.get("vision"):
             continue
         visao.append(mid)
-    for preferencia in ("large", "medium", "small", "ministral"):
+    for preferencia in ("small", "ministral", "medium", "large"):
         for mid in visao:
             if preferencia in mid:
                 return mid
@@ -125,6 +126,15 @@ def testa_modelo(nome, api_key):
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.status == 200
     except urllib.error.HTTPError as exc:
+        if exc.code == 402:
+            sys.exit(
+                "Erro 402 — a sua conta Mistral não tem assinatura/créditos para o modelo "
+                f"'{body.get('model', '?')}'.\n"
+                "Opções:\n"
+                "  a) Ativar cobrança/planos em console.mistral.ai (Billing);\n"
+                "  b) O Tradex já tenta primeiro os modelos gratuitos (Small/Ministral) — "
+                "rode novamente com a versão atualizada."
+            )
         if exc.code == 401:
             sys.exit("Chave recusada pela API (erro 401). Confira a MISTRAL_API_KEY no arquivo .env.")
         return False
