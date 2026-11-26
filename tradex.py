@@ -51,13 +51,20 @@ def carrega_env(path):
     """Lê um arquivo .env simples (CHAVE=valor) e define variáveis não definidas."""
     if not os.path.isfile(path):
         return
-    with open(path, encoding="utf-8-sig") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            chave, valor = line.split("=", 1)
-            os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
+    try:
+        fh = open(path, encoding="utf-8-sig")
+        texto = fh.read()
+        fh.close()
+    except UnicodeDecodeError:
+        fh = open(path, encoding="utf-16")
+        texto = fh.read()
+        fh.close()
+    for line in texto.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        chave, valor = line.split("=", 1)
+        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
 
 
 def encode_image(path):
