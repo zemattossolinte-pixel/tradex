@@ -47,6 +47,7 @@
   .estat { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; }
   .estat div { background:#0d1117; border:1px solid var(--borda); border-radius:8px; padding:8px 14px; font-size:.85rem; }
   .rodape { color:var(--cinza); font-size:.78rem; text-align:center; margin-top:18px; }
+  .aviso { background:#2d1f0d; border:1px solid #d29922; color:#f0cc71; border-radius:8px; padding:12px 14px; margin:12px 0; font-size:.9rem; }
 </style>
 </head>
 <body>
@@ -71,6 +72,8 @@
   </div>
 
   <div class="card hidden" id="resultado">
+
+    <div class="aviso hidden" id="avisos"></div>
     <div class="cabecalho">
       <div><b id="rAtivo">—</b> <span style="color:var(--cinza)" id="rTimeframe"></span></div>
       <span class="selo" id="rSelo">—</span>
@@ -185,6 +188,15 @@ function render(dados) {
     check.insertAdjacentHTML("beforeend", `<div class="check ${classe}"><span>${item.criterio || "critério"}</span></div>`);
   });
   if (itens.length) check.insertAdjacentHTML("beforeend", `<div class="linha" style="color:var(--cinza)">Critérios confirmados: ${confirmados}/${itens.length}</div>`);
+
+  const av = $("avisos");
+  const listaAvisos = p.avisos || [];
+  if (listaAvisos.length) {
+    av.innerHTML = "⚠️ " + listaAvisos.join("<br>⚠️ ");
+    av.classList.remove("hidden");
+  } else {
+    av.classList.add("hidden");
+  }
 
   const c = p.contexto || {};
   $("rTendencia").textContent = fmt(c.tendencia);

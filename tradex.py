@@ -63,6 +63,10 @@ Regras obrigatórias:
 - Use SOMENTE preços que você consegue ler claramente na imagem. Nunca invente números.
 - Alvos devem respeitar relação risco/retorno mínima de 2:1 em relação ao stop.
 - Stop deve ficar atrás de uma estrutura (topo/fundo/pavio), não em distância arbitrária.
+- "entrada" deve SEMPRE ser um número: para gatilho de rompimento, use o nível do rompimento (ex: "venda no rompimento de 6970" => "entrada": 6970).
+- Confira ativo e timeframe LENDO o texto do gráfico: se o ticker não estiver legível na imagem, escreva "desconhecido" — nunca chute o ativo. Verifique também exatamente o timeframe indicado na imagem (ex: "1m", "5m", "1D", "1W").
+- Antes de responder, calcule: (abs(alvo1 - entrada) / abs(entrada - stop_loss)). Se o resultado for menor que 2, mude "direcao" para "aguardar" e explique em "justificativa" — regra R:R >= 2:1 NÃO SABOTE, é a regra mais importante do plano.
+- Nunca use confiança "alta" se a sua própria leitura estiver incerta (use palavras como "possivelmente/provavelmente" => confiança "baixa" ou "média").
 - Se a imagem estiver ilegível, sem preços claros ou o cenário for fraco, use "direcao": "aguardar" e explique o motivo em "justificativa".
 
 Retorne APENAS o JSON, sem texto antes ou depois."""
@@ -227,7 +231,7 @@ def analyze(path, model, api_key):
         conteudo = resposta["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
         sys.exit(f"Resposta inesperada da API:\n{resposta}")
-    return extract_json(conteudo)
+    return valida_plano(extract_json(conteudo))
 
 
 def extract_json(raw):
@@ -241,6 +245,28 @@ def extract_json(raw):
         return json.loads(text)
     except json.JSONDecodeError as exc:
         sys.exit(f"O modelo não devolveu um JSON válido: {exc}\nResposta bruta:\n{raw}")
+
+
+def valida_plano(plano):
+    """Confere localmente as regras duras do plano (R:R minimo) e devolve avisos."""
+    avisos = []
+
+    def num(v):
+        return isinstance(v, (int, float))
+
+    if plano.get("direcao") in ("compra", "venda"):
+        entrada, stop, alvo1 = plano.get("entrada"), plano.get("stop_loss"), plano.get("alvo1")
+        if all(map(num, (entrada, stop, alvo1))):
+            risco = abs(entrada - stop)
+            if risco > 0:
+                rr1 = abs(alvo1 - entrada) / risco
+                if rr1 < 2:
+                    avisos.append(
+                        f"REVISAR: o R:R do alvo 1 e {round(rr1, 2)}:1, abaixo do minimo de 2:1."
+                        " Reavalie stop ou alvos, ou descarte a operacao."
+                    )
+    plano["avisos"] = avisos
+    return plano
 
 
 def calcula_gestao_risco(plano, capital, risco_pct, multiplicador=1.0):
@@ -306,6 +332,9 @@ def imprime(plano, capital, risco_pct, multiplicador):
     print(f"Timeframe:  {plano.get('timeframe', 'desconhecido')}")
     print(f"Decisão:    {plano.get('direcao', 'aguardar').upper()}")
     print("=" * 60)
+
+    for aviso in plano.get("avisos") or []:
+        print(f"\n*** AVISO: {aviso} ***")
 
     contexto = plano.get("contexto") or {}
     if contexto:

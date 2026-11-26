@@ -84,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
                 body.pop("response_format", None)
                 resposta = tradex.chama_api(body, api_key)
             conteudo = resposta["choices"][0]["message"]["content"]
-            plano = tradex.extract_json(conteudo)
+            plano = tradex.valida_plano(tradex.extract_json(conteudo))
 
             capital = float(pedido.get("capital") or 10000)
             risco = float(pedido.get("risco") or 1.0)
