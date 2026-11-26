@@ -53,6 +53,17 @@ Para configurar seu capital e risco por trade:
 python tradex.py grafico.png --capital 5000 --risco 1.5
 ```
 
+Opções extras:
+
+```
+python tradex.py grafico.png --multiplicador 0.2      # valor por ponto de mini-futuros
+python tradex.py grafico.png --sem-diario             # não gravar no diário de trades
+python tradex.py grafico.png --saida plano.json       # salvar o plano em JSON
+```
+
+- `--multiplicador 0.2`: valor financeiro por ponto de movimento (default: 1.0).
+- `--sem-diario`: desativa o registro automático no `tradex_diario.csv`.
+
 ## Como funciona
 
 1. O print do gráfico é enviado ao modelo de visão (`pixtral-large-latest` por padrão).
@@ -63,6 +74,31 @@ python tradex.py grafico.png --capital 5000 --risco 1.5
    e do risco por trade (`risco_financeiro / distância até o stop`), além do
    R:R real de cada alvo. Se a leitura da imagem for ruim, o agente responde
    `"direcao": "aguardar"` em vez de inventar números.
+4. **Checklist de disciplina**: o agente marca critérios objetivos de
+   confirmação (tendência alinhada, padrão confirmado, R:R >= 2, volume ...).
+   Se a maioria não confirmar, a resposta é `AGUARDAR` — paciência também é
+   decisão de trader.
+5. **Diário de trades**: toda análise (inclusive os "aguardar") é gravada
+   automaticamente em `tradex_diario.csv`, para você revisar depois o que
+   funcionou e o que não funcionou.
+
+## O que vem na análise
+
+- Contexto da tendência, suportes, resistências, padrões e indicadores
+- Fundamentos/macro do ativo (como contexto, já que os dados do modelo podem
+  estar desatualizados)
+- Checklist de disciplina com critérios confirmados/não confirmados
+- Direção (compra/venda/aguardar), entrada, stop (atrás da estrutura), alvos
+  (R:R mínimo 2:1)
+- Gestão da operação: quando realizar parcial e mover o stop para breakeven
+- Plano B (cenário alternativo) e critérios de invalidação
+- Tamanho da posição e R:R calculados localmente (independente da IA)
+
+Abrindo o diário depois:
+
+```
+notepad tradex_diario.csv
+```
 
 ## Alternativa: chave só para o momento (sem criar arquivo)
 
