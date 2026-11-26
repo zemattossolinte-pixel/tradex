@@ -68,6 +68,36 @@ Regras obrigatórias:
 Retorne APENAS o JSON, sem texto antes ou depois."""
 
 
+def lista_modelos(api_key):
+    req = urllib.request.Request(
+        "https://api.mistral.ai/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8")).get("data", [])
+    except Exception:
+        return []
+
+
+def escolhe_modelo(api_key):
+    """Escolhe o melhor modelo com capacidade de visão disponível hoje."""
+    visao = []
+    for modelo in lista_modelos(api_key):
+        mid = modelo.get("id", "")
+        caps = modelo.get("capabilities") or {}
+        if not caps.get("vision"):
+            continue
+        if any(x in mid for x in ("voxtral", "ocr", "embed", "shieldstral", "moderation")):
+            continue
+        visao.append(mid)
+    for preferencia in ("large", "medium", "small", "ministral"):
+        for mid in visao:
+            if preferencia in mid:
+                return mid
+    return visao[0] if visao else None
+
+
 def carrega_env(path):
     """Lê um arquivo .env simples (CHAVE=valor) e define variáveis não definidas."""
     if not os.path.isfile(path):
@@ -289,7 +319,8 @@ def main():
     parser.add_argument("--risco", type=float, default=1.0, help="risco por trade em %% (default: 1.0)")
     parser.add_argument("--multiplicador", type=float, default=1.0,
                         help="valor do ponto/contrato (ex: 0.2 para mini-índice); default: 1.0")
-    parser.add_argument("--modelo", default="pixtral-large-latest", help="modelo de visão do Mistral")
+    parser.add_argument("--modelo", default="auto",
+                        help="modelo de visão do Mistral; \"auto\" escolhe o melhor disponível")
     parser.add_argument("--saida", help="salvar o plano em um arquivo JSON")
     parser.add_argument("--sem-diario", action="store_true",
                         help="não registrar a análise no tradex_diario.csv")
@@ -312,8 +343,19 @@ def main():
     if not os.path.isfile(args.imagem):
         sys.exit(f"Arquivo não encontrado: {args.imagem}")
 
-    print(f"Analisando {args.imagem} com {args.modelo} ...")
-    plano = analyze(args.imagem, args.modelo, api_key)
+    modelo = args.modelo
+    if modelo == "auto":
+        print("Descobrindo o melhor modelo de visão disponível ...")
+        modelo = escolhe_modelo(api_key)
+        if not modelo:
+            sys.exit(
+                "Não consegui descobrir um modelo de visão automaticamente.\n"
+                "Rode com --modelo <nome>, por exemplo:\n"
+                "  python tradex.py grafico.png --modelo mistral-medium-latest"
+            )
+        print(f"Modelo escolhido: {modelo}")
+    print(f"Analisando {args.imagem} com {modelo} ...")
+    plano = analyze(args.imagem, modelo, api_key)
     imprime(plano, args.capital, args.risco, args.multiplicador)
 
     if not args.sem_diario:

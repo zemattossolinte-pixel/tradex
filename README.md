@@ -62,7 +62,8 @@ python tradex.py grafico.png --saida plano.json       # salvar o plano em JSON
 
 ## Como funciona
 
-1. O print do gráfico é enviado ao modelo de visão (`pixtral-large-latest` por padrão).
+1. O Tradex pergunta à API do Mistral quais modelos de visão estão disponíveis
+   e escolhe automaticamente o melhor (`--modelo` permite forçar outro).
 2. O modelo atua como analista técnico e responde em JSON estruturado:
    tendência, suportes/resistências, padrões, direção, entrada, stop, alvos,
    justificativa, invalidação e nível de confiança.
