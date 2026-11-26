@@ -80,15 +80,26 @@ def lista_modelos(api_key):
         return []
 
 
+CANDIDATOS_MODELO = [
+    "mistral-medium-latest",
+    "mistral-small-latest",
+    "ministral-3-14b-latest",
+    "mistral-large-latest",
+    "magistral-medium-latest",
+]
+
+EXCLUIR_MODELO = ("voxtral", "ocr", "embed", "shieldstral", "moderation", "codestral")
+
+
 def escolhe_modelo(api_key):
     """Escolhe o melhor modelo com capacidade de visão disponível hoje."""
     visao = []
     for modelo in lista_modelos(api_key):
         mid = modelo.get("id", "")
-        caps = modelo.get("capabilities") or {}
-        if not caps.get("vision"):
+        if any(x in mid for x in EXCLUIR_MODELO):
             continue
-        if any(x in mid for x in ("voxtral", "ocr", "embed", "shieldstral", "moderation")):
+        caps = modelo.get("capabilities") or {}
+        if "vision" in caps and not caps.get("vision"):
             continue
         visao.append(mid)
     for preferencia in ("large", "medium", "small", "ministral"):
@@ -96,6 +107,40 @@ def escolhe_modelo(api_key):
             if preferencia in mid:
                 return mid
     return visao[0] if visao else None
+
+
+def testa_modelo(nome, api_key):
+    """Sonda barata: chamada de texto com 1 token só para validar o nome."""
+    body = {
+        "model": nome,
+        "messages": [{"role": "user", "content": "ok"}],
+        "max_tokens": 1,
+    }
+    req = urllib.request.Request(
+        "https://api.mistral.ai/v1/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status == 200
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            sys.exit("Chave recusada pela API (erro 401). Confira a MISTRAL_API_KEY no arquivo .env.")
+        return False
+    except urllib.error.URLError as exc:
+        sys.exit(f"Erro de conexão com api.mistral.ai: {exc}")
+
+
+def resolve_modelo(api_key):
+    """Modelo de visão: primeiro pela listagem, depois por candidatos testados."""
+    modelo = escolhe_modelo(api_key)
+    if modelo:
+        return modelo
+    for candidato in CANDIDATOS_MODELO:
+        if testa_modelo(candidato, api_key):
+            return candidato
+    return None
 
 
 def carrega_env(path):
@@ -346,7 +391,7 @@ def main():
     modelo = args.modelo
     if modelo == "auto":
         print("Descobrindo o melhor modelo de visão disponível ...")
-        modelo = escolhe_modelo(api_key)
+        modelo = resolve_modelo(api_key)
         if not modelo:
             sys.exit(
                 "Não consegui descobrir um modelo de visão automaticamente.\n"

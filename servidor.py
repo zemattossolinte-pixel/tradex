@@ -61,7 +61,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            modelo = pedido.get("modelo") or tradex.escolhe_modelo(api_key)
+            modelo = pedido.get("modelo") or tradex.resolve_modelo(api_key)
             if not modelo:
                 self._json(500, {"erro": "Nenhum modelo de visão disponível na API do Mistral."})
                 return
