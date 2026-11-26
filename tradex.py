@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tradex: copiloto de trade por imagem.
 
-Envia um print do gráfico para o modelo de visão do Mistral e recebe um
+Envia um print do gráfico para a API do Mistral (via HTTP, sem dependências) e recebe um
 plano de trade estruturado (entrada, stop loss, alvos) com cálculo local
 de risco/retorno, tamanho de posição, checklist de disciplina e diário
 de trades.
@@ -15,6 +15,8 @@ import json
 import mimetypes
 import os
 import sys
+import urllib.error
+import urllib.request
 
 PROMPT = """Você é um trader profissional sênior, com domínio completo de:
 - Análise técnica: estrutura de topos/fundos, tendência, suportes e resistências, padrões gráficos e de candles, zonas de liquidez, indicadores (médias móveis, RSI, volume, momentum) e leitura de ação do preço.
@@ -92,32 +94,55 @@ def encode_image(path):
         return mime, base64.b64encode(fh.read()).decode("utf-8")
 
 
-def analyze(path, model, api_key):
-    from mistralai import Mistral
-
-    mime, b64 = encode_image(path)
-    client = Mistral(api_key=api_key)
-    message = {
-        "role": "user",
-        "content": [
-            {"type": "text", "text": PROMPT},
-            {"type": "image_url", "image_url": f"data:{mime};base64,{b64}"},
-        ],
-    }
+def chama_api(body, api_key):
+    req = urllib.request.Request(
+        "https://api.mistral.ai/v1/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
     try:
-        response = client.chat.complete(
-            model=model,
-            messages=[message],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-        )
-    except Exception:
-        response = client.chat.complete(
-            model=model,
-            messages=[message],
-            temperature=0.2,
-        )
-    return extract_json(response.choices[0].message.content)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detalhe = exc.read().decode("utf-8", "replace")
+        if exc.code == 401:
+            sys.exit("Chave recusada pela API (erro 401). Confira a MISTRAL_API_KEY no arquivo .env.")
+        if exc.code == 429:
+            sys.exit("Limite de uso atingido (erro 429). Aguarde alguns minutos e tente de novo.")
+        if exc.code == 400 and body.get("response_format"):
+            return None
+        sys.exit(f"Erro HTTP {exc.code} na API do Mistral:\n{detalhe}")
+    except urllib.error.URLError as exc:
+        sys.exit(f"Erro de conexão com api.mistral.ai: {exc}")
+
+
+def analyze(path, model, api_key):
+    mime, b64 = encode_image(path)
+    body = {
+        "model": model,
+        "temperature": 0.2,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": PROMPT},
+                {"type": "image_url", "image_url": f"data:{mime};base64,{b64}"},
+            ],
+        }],
+        "response_format": {"type": "json_object"},
+    }
+    resposta = chama_api(body, api_key)
+    if resposta is None:
+        body.pop("response_format", None)
+        resposta = chama_api(body, api_key)
+    try:
+        conteudo = resposta["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        sys.exit(f"Resposta inesperada da API:\n{resposta}")
+    return extract_json(conteudo)
 
 
 def extract_json(raw):

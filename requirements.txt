@@ -1,1 +1,1 @@
-mistralai>=1.0.0
+# Nenhuma dependência externa: o Tradex usa apenas a biblioteca padrão do Python.

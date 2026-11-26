@@ -13,16 +13,12 @@ estruturado com **entrada, stop loss, alvos, risco/retorno e tamanho de posiçã
 **1. Instale o Python** — baixe em [python.org/downloads](https://www.python.org/downloads/)
 e, na instalação no Windows, marque a opção **"Add Python to PATH"**.
 
-**2. Baixe o projeto** (uma vez só). No Terminal (macOS) ou PowerShell (Windows):
+**2. Baixe o projeto** (uma vez só):
 
-```
-git clone https://github.com/zemattossolinte-pixel/tradex.git
-cd tradex
-pip install -r requirements.txt
-```
-
-Se o `git` não estiver instalado, baixe em [git-scm.com](https://git-scm.com/downloads)
-(ou, alternativamente, baixe os arquivos em **Code → Download ZIP** e extraia).
+- Abra [github.com/zemattossolinte-pixel/tradex](https://github.com/zemattossolinte-pixel/tradex)
+- Botão verde **Code** → **Download ZIP** → extraia
+- **NÃO precisa instalar bibliotecas** o Tradex usa apenas o Python padrão
+  (o `pip install` de versões antigas não é mais necessário)
 
 **3. Pegue sua chave da Mistral** — crie uma conta grátis em
 [console.mistral.ai](https://console.mistral.ai), vá em **API Keys → Create new key**,
@@ -123,6 +119,6 @@ $env:MISTRAL_API_KEY="sua-chave"
 
 ```
 tradex.py           CLI principal (visão + análise + gestão de risco)
-requirements.txt    Dependências
+requirements.txt    sem dependências (Python padrão)
 .env.example        Modelo do arquivo .env
 ```
