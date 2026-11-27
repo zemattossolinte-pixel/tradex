@@ -5,3 +5,4 @@ venv/
 .env
 plano.json
 tradex_diario.csv
+ronda_hoje.json

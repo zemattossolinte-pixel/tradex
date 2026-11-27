@@ -48,6 +48,19 @@
   .estat div { background:#0d1117; border:1px solid var(--borda); border-radius:8px; padding:8px 14px; font-size:.85rem; }
   .rodape { color:var(--cinza); font-size:.78rem; text-align:center; margin-top:18px; }
   .aviso { background:#2d1f0d; border:1px solid #d29922; color:#f0cc71; border-radius:8px; padding:12px 14px; margin:12px 0; font-size:.9rem; }
+  .tabs { display:flex; gap:10px; margin-bottom:18px; }
+  .tab { background:var(--card); border:1px solid var(--borda); color:var(--cinza); font-weight:600;
+         padding:11px; border-radius:8px; cursor:pointer; width:100%; margin-top:0; }
+  .tab.ativa { color:var(--verde); border-color:var(--verde); }
+  .cotacao { display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--borda); font-size:.93rem; flex-wrap:wrap; }
+  .cotacao:last-child { border-bottom:none; }
+  .cotacao .tick { font-weight:700; }
+  .cotacao .preco { color:var(--texto); }
+  .sobe { color:var(--verde); } .desce { color:var(--vermelho); }
+  .watch { padding:10px 0; border-bottom:1px solid var(--borda); font-size:.93rem; }
+  .watch:last-child { border-bottom:none; }
+  .watch .pos { color:var(--verde); font-weight:800; margin-right:8px; }
+  .watch .motivo { color:var(--cinza); font-size:.85rem; margin-top:3px; }
 </style>
 </head>
 <body>
@@ -55,6 +68,12 @@
   <h1>Tradex<span> ▲</span></h1>
   <p class="sub">Envie o print do gráfico — receba entrada, stop, alvos e gestão de risco.</p>
 
+  <div class="tabs">
+    <button class="tab ativa" id="tabAnalisar">📊 Analisar gráfico</button>
+    <button class="tab" id="tabRonda">🔍 Ronda diária</button>
+  </div>
+
+  <div id="abaAnalisar">
   <div class="card">
     <div class="zone" id="zone">
       <div id="zonaDica">📊 Arraste o print do gráfico aqui<br><small style="color:var(--cinza)">ou clique para escolher o arquivo (PNG / JPEG)</small></div>
@@ -97,6 +116,28 @@
     <div class="linha"><b>Invalidação:</b> <span id="rInvalid">—</span></div>
     <div class="linha"><b>Confiança:</b> <span id="rConf">—</span></div>
   </div>
+  </div>
+
+  <div id="abaRonda" class="hidden">
+    <div class="card">
+      <p class="linha" style="margin-bottom:12px">A Ronda olha o <b>fechamento do dia</b>, separa empresas fundamentadamente saudáveis em situações técnicas interessantes e devolve uma <b>watchlist</b>. Ela <b>não prevê o preço de amanhã</b> — aponta onde vale tirar o print diário e rodar na aba Analisar.</p>
+      <button id="botaoRonda">🔍 Rodar a ronda de hoje</button>
+      <div class="carregando" id="carregandoRonda"><span class="spinner"></span><p>Buscando fechamentos na B3 e na OKX…</p></div>
+      <div class="erro" id="erroRonda"></div>
+    </div>
+    <div class="card hidden" id="resultadoRonda">
+      <div class="cabecalho"><b>Ronda do dia</b> <span style="color:var(--cinza)" id="rondaQuando"></span></div>
+      <div id="avisosRonda"></div>
+      <div class="titulo-secao">Contexto do dia</div>
+      <div id="rondaContexto"></div>
+      <div class="titulo-secao">WATCHLIST — onde vale tirar o print diário</div>
+      <div id="rondaWatchlist"></div>
+      <div class="titulo-secao">Ações acompanhadas</div>
+      <div id="rondaAcoes"></div>
+      <div class="titulo-secao">Cripto (OKX)</div>
+      <div id="rondaCripto"></div>
+    </div>
+  </div>
 
   <p class="rodape">Análise gerada por IA a partir de uma imagem — confira os níveis no seu gráfico antes de operar.<br>Não é recomendação de investimento.</p>
 </div>
@@ -105,6 +146,15 @@
 const $ = id => document.getElementById(id);
 const zone = $("zone"), arquivo = $("arquivo"), preview = $("preview");
 let imagemAtual = null;
+
+$("tabAnalisar").addEventListener("click", () => trocarAba("analisar"));
+$("tabRonda").addEventListener("click", () => trocarAba("ronda"));
+function trocarAba(aba) {
+  $("abaAnalisar").classList.toggle("hidden", aba !== "analisar");
+  $("abaRonda").classList.toggle("hidden", aba !== "ronda");
+  $("tabAnalisar").classList.toggle("ativa", aba === "analisar");
+  $("tabRonda").classList.toggle("ativa", aba === "ronda");
+}
 
 zone.addEventListener("click", () => arquivo.click());
 zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
@@ -229,6 +279,60 @@ function render(dados) {
 
   $("resultado").classList.remove("hidden");
   $("resultado").scrollIntoView({ behavior: "smooth" });
+}
+
+function mostrarErroRonda(msg) { const e = $("erroRonda"); e.textContent = msg; e.style.display = "block"; }
+const classeVar = v => v === null || v === undefined ? "" : (v >= 0 ? "sobe" : "desce");
+const txtVar = v => v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+const txtPreco = v => v === null || v === undefined ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
+$("botaoRonda").addEventListener("click", async () => {
+  $("erroRonda").style.display = "none";
+  $("botaoRonda").disabled = true; $("carregandoRonda").style.display = "block"; $("resultadoRonda").classList.add("hidden");
+  try {
+    const resposta = await fetch("/ronda", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const dados = await resposta.json();
+    if (dados.erro) return mostrarErroRonda(dados.erro);
+    renderRonda(dados);
+  } catch (err) {
+    mostrarErroRonda("Falha de conexão com o servidor local: " + err);
+  } finally {
+    $("carregandoRonda").style.display = "none";
+    $("botaoRonda").disabled = false;
+  }
+});
+
+function renderRonda(r) {
+  $("rondaQuando").textContent = r.gerado_em || "";
+
+  const ar = $("avisosRonda");
+  if (r.avisos && r.avisos.length) {
+    ar.innerHTML = `<div class="aviso">⚠️ ${r.avisos.join("<br>⚠️ ")}</div>`;
+  } else { ar.innerHTML = ""; }
+
+  const ctx = $("rondaContexto"); ctx.innerHTML = "";
+  if (!(r.contexto || []).length) ctx.innerHTML = "<div class='linha' style='color:var(--cinza)'>Índices exigem token brapi — veja os avisos.</div>";
+  (r.contexto || []).forEach(c =>
+    ctx.insertAdjacentHTML("beforeend", `<div class="cotacao"><span class="tick">${c.nome}</span><span><span class="preco">${txtPreco(c.preco)}</span> <span class="${classeVar(c.variacao)}">${txtVar(c.variacao)}</span></span></div>`));
+
+  const wl = $("rondaWatchlist"); wl.innerHTML = "";
+  (r.watchlist || []).forEach((a, i) =>
+    wl.insertAdjacentHTML("beforeend", `<div class="watch"><span class="pos">${i + 1}.</span><span class="tick">${a.ticker}</span> <span class="${classeVar(a.variacao_dia)}">${txtVar(a.variacao_dia)}</span><div class="motivo">${a.motivo || ""}</div></div>`));
+  if (!(r.watchlist || []).length) wl.innerHTML = "<div class='linha' style='color:var(--cinza)'>Sem ações com dados hoje (veja os avisos sobre o token).</div>";
+
+  const ac = $("rondaAcoes"); ac.innerHTML = "";
+  (r.acoes || []).forEach(a =>
+    ac.insertAdjacentHTML("beforeend", `<div class="cotacao"><span class="tick">${a.ticker}</span><span><span class="preco">${txtPreco(a.preco)}</span> <span class="${classeVar(a.variacao_dia)}">${txtVar(a.variacao_dia)}</span></span></div>`));
+
+  const cr = $("rondaCripto"); cr.innerHTML = "";
+  (r.cripto || []).forEach(c =>
+    cr.insertAdjacentHTML("beforeend", `<div class="cotacao"><span class="tick">${c.ticker}</span><span><span class="preco">${txtPreco(c.preco)}</span> <span class="${classeVar(c.variacao_dia)}">${txtVar(c.variacao_dia)}</span></span></div>`));
+
+  $("resultadoRonda").classList.remove("hidden");
 }
 </script>
 </body>

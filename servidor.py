@@ -15,6 +15,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import ronda
 import tradex
 
 PORTA = 8765
@@ -45,7 +46,11 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"erro": "página não encontrada"})
 
     def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != "/analisar":
+        caminho = urllib.parse.urlparse(self.path).path
+        if caminho == "/ronda":
+            self._ronda()
+            return
+        if caminho != "/analisar":
             self._json(404, {"erro": "rota não encontrada"})
             return
         try:
@@ -100,6 +105,22 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._json(500, {"erro": f"Falha na análise: {exc}"})
 
+    def _ronda(self):
+        try:
+            tamanho = int(self.headers.get("Content-Length", 0))
+            pedido = json.loads(self.rfile.read(tamanho).decode("utf-8")) if tamanho else {}
+        except Exception as exc:
+            self._json(400, {"erro": f"pedido inválido: {exc}"})
+            return
+        try:
+            token = pedido.get("token") or os.environ.get("BRAPI_TOKEN")
+            ativos = pedido.get("ativos") or ronda.ATIVOS_PADRAO
+            cripto = pedido.get("cripto") or ronda.CRIPTO_PADRAO
+            relatorio = ronda.monta_ronda(ativos, cripto, ronda.INDICES, token)
+            self._json(200, relatorio)
+        except Exception as exc:
+            self._json(500, {"erro": f"Falha na ronda: {exc}"})
+
     def log_message(self, formato, *args):
         print(f"[{self.address_string()}] {formato % args}")
 
@@ -128,8 +149,16 @@ def main():
     if not os.environ.get("MISTRAL_API_KEY"):
         print("!! Chave não encontrada: crie o arquivo .env na pasta do projeto com MISTRAL_API_KEY=sua-chave")
         print("!! (o servidor vai subir, mas as análises vão falhar até a chave existir)")
-    url = f"http://127.0.0.1:{PORTA}"
-    servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), Handler)
+    url = f"http://127.0.0.1:{args.porta}"
+    endereco = "127.0.0.1"
+    if args.rede:
+        endereco = "0.0.0.0"
+        ip = ip_local()
+        if ip:
+            print(f"No celular/tablet (mesma rede Wi-Fi): abra http://{ip}:{args.porta}")
+            print("(se não conectar, libere a porta no firewall do Windows como administrador:")
+            print(f" netsh advfirewall firewall add rule name=\"Tradex\" dir=in action=allow protocol=TCP localport={args.porta})")
+    servidor = ThreadingHTTPServer((endereco, args.porta), Handler)
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     print(f"Tradex Web em {url}  (Ctrl+C para encerrar)")
     try:

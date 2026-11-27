@@ -123,6 +123,46 @@ export MISTRAL_API_KEY=sua-chave
 $env:MISTRAL_API_KEY="sua-chave"
 ```
 
+## Ronda diária (onde olhar hoje)
+
+A Ronda olha o fechamento do dia da B3 e das cripto e devolve uma **watchlist**
+ranqueada: empresas fundamentadamente saudáveis em situações técnicas
+interessantes. Ela **não prevê o preço de amanhã** — aponta onde vale tirar o
+print do gráfico diário e rodar no Tradex para ter entrada, stop e alvos.
+
+**Modo web:** abra o Tradex e clique na aba **🔍 Ronda diária** → "Rodar a
+ronda de hoje".
+
+**No terminal:**
+
+```
+python ronda.py
+```
+
+O resultado também é salvo em `ronda_hoje.json`.
+
+### Token da brapi (opcional, mas recomendado)
+
+A Ronda usa a API gratuita [brapi.dev](https://brapi.dev) para cotações da B3.
+Sem token, funcionam apenas PETR4, VALE3, ITUB4, MGLU3 e as cripto (via OKX).
+Para ver **todas** as ações da watchlist e o IBOV/dólar:
+
+1. Crie uma conta gratuita em https://brapi.dev e copie seu token.
+2. Adicione uma linha no arquivo `.env` (mesma pasta do Tradex):
+
+```
+BRAPI_TOKEN=seu-token-da-brapi
+```
+
+Nada mais muda: sem token a Ronda segue funcionando com o que for gratuito.
+
+### Como usar a watchlist no dia a dia
+
+1. Rode a Ronda depois do fechamento da B3 (a partir das 18h).
+2. Pegue os 2-3 primeiros da watchlist e tire o print do gráfico **diário** de cada um.
+3. Rode cada print na aba **Analisar** (ou `python tradex.py grafico.png`).
+4. Só entre nos planos com COMPRA/VENDA e R:R ≥ 2 — AGUARDAR é uma decisão válida.
+
 ## Dicas para melhores análises
 
 - Capture o gráfico com candlesticks limpos e escala de preços legível.
@@ -134,7 +174,8 @@ $env:MISTRAL_API_KEY="sua-chave"
 ```
 tradex.py           Motor de análise (visão + gestão de risco + diário) — usado pelo CLI e pela web
 servidor.py         Servidor local do modo web (abre o navegador em 127.0.0.1:8765)
-index.html          Página do modo web (arrastar e soltar o gráfico)
+index.html          Página do modo web (arrastar e soltar o gráfico + aba Ronda)
+ronda.py            Ronda diária: fechamentos da B3/cripto e watchlist ranqueada
 requirements.txt    sem dependências (Python padrão)
 .env.example        Modelo do arquivo .env
 ```
