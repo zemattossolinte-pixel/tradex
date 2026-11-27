@@ -30,67 +30,156 @@ import tradex
 
 ATIVOS_PADRAO = ["PETR4", "VALE3", "ITUB4", "BBAS3", "B3SA3", "WEGE3", "ABEV3", "PRIO3"]
 CRIPTO_PADRAO = ["BTC-BRL", "ETH-BRL", "XRP-BRL", "SOL-BRL"]
-INDICES = ["IBOV", "USDBRL"]
+INDICES = ["IBOV", "USD-BRL"]
 
 UA = {"User-Agent": "Mozilla/5.0 (Tradex)"}
 
 
-def _get_json(url, timeout=20):
-    requisicao = urllib.request.Request(url, headers=UA)
+def _get_json(url, cabecalhos_extra=None, timeout=20):
+    cabecalhos = dict(UA)
+    if cabecalhos_extra:
+        cabecalhos.update(cabecalhos_extra)
+    requisicao = urllib.request.Request(url, headers=cabecalhos)
     with urllib.request.urlopen(requisicao, timeout=timeout) as resposta:
         return json.loads(resposta.read().decode("utf-8"))
 
 
-TICKERS_GRATIS_BRAPI = {"PETR4", "VALE3", "ITUB4", "MGLU3"}
+LOTE_MAXIMO = 5  # a brapi recusa lotes grandes (erro 400 QUOTES_PER_REQUEST_EXCEEDED)
+
+
+def _erro_brapi(exc):
+    try:
+        corpo = json.loads(exc.read().decode("utf-8"))
+        mensagem = corpo.get("message", "")
+        codigo = corpo.get("code", "")
+        return f"{mensagem} ({codigo})" if codigo else mensagem
+    except Exception:
+        return f"erro HTTP {exc.code}"
+
+
+def _extrai_resultados(dados):
+    resultado = {}
+    for item in dados.get("results", []):
+        conteudo = item.get("data") if isinstance(item.get("data"), dict) else item
+        simbolo = (item.get("symbol") or conteudo.get("symbol") or "").upper()
+        if simbolo:
+            resultado[simbolo] = conteudo
+    return resultado
 
 
 def busca_brapi(tickers, token=None):
-    """Busca cotações na brapi.dev. Retorna (dict {ticker: dados}, avisos []).
+    """Busca cotações na brapi.dev (endpoint v2). Retorna (dict {ticker: dados}, avisos []).
 
-    A brapi libera alguns tickers sem token, mas a chamada em lote exige token
-    se misturar tickers pagos. Estratégia: tenta o lote; em 401 sem token,
-    busca um a um e registra quais precisam de token.
+    Envia o token no header Authorization (recomendação da brapi), divide em
+    lotes de até 5 tickers e mostra a mensagem de erro original da API.
     """
     if not tickers:
         return {}, []
+    token = (token or "").strip().strip('"').strip("'")
+    cabecalhos = {"Authorization": f"Bearer {token}"} if token else {}
     avisos = []
-    if token:
-        url = "https://brapi.dev/api/quote/" + ",".join(tickers) + f"?token={token}"
-        try:
-            dados = _get_json(url)
-            resultado = {item.get("symbol", "").upper(): item for item in dados.get("results", [])}
-            faltando = [t for t in tickers if t not in resultado]
-            if faltando:
-                avisos.append("brapi: sem dados para " + ", ".join(faltando))
-            return resultado, avisos
-        except urllib.error.HTTPError as exc:
-            avisos.append(f"brapi: erro HTTP {exc.code} no lote; tentando um a um...")
-        except urllib.error.URLError as exc:
-            return {}, [f"brapi: falha de conexão ({exc.reason})"]
-
     resultado = {}
-    sem_token = []
-    for ticker in tickers:
+    erros_400 = []
+
+    for inicio in range(0, len(tickers), LOTE_MAXIMO):
+        lote = tickers[inicio:inicio + LOTE_MAXIMO]
+        url = "https://brapi.dev/api/v2/stocks/quote?symbols=" + ",".join(lote)
         try:
-            dados = _get_json(f"https://brapi.dev/api/quote/{ticker}")
-            for item in dados.get("results", []):
-                resultado[item.get("symbol", "").upper()] = item
+            dados = _get_json(url, cabecalhos)
+            resultado.update(_extrai_resultados(dados))
+            for erro in dados.get("errors") or []:
+                avisos.append(f"brapi: {erro}")
         except urllib.error.HTTPError as exc:
             if exc.code == 401:
-                sem_token.append(ticker)
+                avisos.append("brapi: token ausente ou inválido (401). Confira o BRAPI_TOKEN no .env "
+                              "— copie a chave em https://brapi.dev/dashboard (sem aspas e sem espaços)")
+            elif exc.code == 400:
+                erros_400.append(_erro_brapi(exc))
+            elif exc.code == 403:
+                avisos.append(f"brapi: seu plano não inclui esses dados — {_erro_brapi(exc)}")
             elif exc.code == 429:
                 avisos.append("brapi: limite de requisições atingido (429). Tente de novo em alguns minutos.")
-                break
             else:
-                avisos.append(f"brapi: erro HTTP {exc.code} em {ticker}")
+                avisos.append(f"brapi: {_erro_brapi(exc)}")
         except urllib.error.URLError as exc:
-            avisos.append(f"brapi: falha de conexão em {ticker} ({exc.reason})")
-    if sem_token:
-        avisos.append(
-            "brapi: " + ", ".join(sem_token)
-            + " exigem token. Crie um token gratuito em https://brapi.dev e coloque no .env: BRAPI_TOKEN=seu-token"
-        )
+            avisos.append(f"brapi: falha de conexão ({exc.reason})")
+
+    if erros_400:
+        avisos.append("brapi: chamada recusada (400) — " + "; ".join(dict.fromkeys(erros_400)))
+
+    faltando = [t for t in tickers if t not in resultado]
+    if faltando and not token:
+        sem_token = []
+        for ticker in faltando:
+            try:
+                dados = _get_json(f"https://brapi.dev/api/v2/stocks/quote?symbols={ticker}")
+                resultado.update(_extrai_resultados(dados))
+            except urllib.error.HTTPError as exc:
+                if exc.code in (400, 401):
+                    sem_token.append(ticker)
+                elif exc.code == 429:
+                    avisos.append("brapi: limite de requisições atingido (429). Tente de novo em alguns minutos.")
+                    break
+                else:
+                    avisos.append(f"brapi: {_erro_brapi(exc)} em {ticker}")
+            except urllib.error.URLError as exc:
+                avisos.append(f"brapi: falha de conexão em {ticker} ({exc.reason})")
+        if sem_token:
+            avisos.append(
+                "brapi: " + ", ".join(sem_token)
+                + " exigem token. Crie um token gratuito em https://brapi.dev e coloque no .env: BRAPI_TOKEN=seu-token"
+            )
     return resultado, avisos
+
+
+def busca_estatisticas(tickers, token=None):
+    """Busca P/L, dividend yield etc. em /api/v2/stocks/statistics.
+
+    Opcional: se falhar (plano/limite), a Ronda segue sem leitura fundamentalista.
+    """
+    if not tickers:
+        return {}
+    token = (token or "").strip().strip('"').strip("'")
+    cabecalhos = {"Authorization": f"Bearer {token}"} if token else {}
+    resultado = {}
+    for inicio in range(0, len(tickers), LOTE_MAXIMO):
+        lote = tickers[inicio:inicio + LOTE_MAXIMO]
+        url = "https://brapi.dev/api/v2/stocks/statistics?symbols=" + ",".join(lote)
+        try:
+            resultado.update(_extrai_resultados(_get_json(url, cabecalhos)))
+        except Exception:
+            continue
+    return resultado
+
+
+def busca_moeda(pares, token=None):
+    """Busca câmbio (ex.: USD-BRL) em /api/v2/currency. Retorna (dict, avisos)."""
+    if not pares:
+        return {}, []
+    token = (token or "").strip().strip('"').strip("'")
+    cabecalhos = {"Authorization": f"Bearer {token}"} if token else {}
+    url = "https://brapi.dev/api/v2/currency?currency=" + ",".join(pares)
+    try:
+        dados = _get_json(url, cabecalhos)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            return {}, ["brapi: câmbio exige token válido (401). Confira o BRAPI_TOKEN no .env"]
+        if exc.code == 403:
+            return {}, ["brapi: seu plano não inclui câmbio (403) — " + _erro_brapi(exc)]
+        return {}, [f"brapi: {_erro_brapi(exc)}"]
+    except urllib.error.URLError as exc:
+        return {}, [f"brapi: falha de conexão no câmbio ({exc.reason})"]
+    resultado = {}
+    for item in dados.get("currency", []):
+        par = f"{item.get('fromCurrency', '')}-{item.get('toCurrency', '')}".upper()
+        try:
+            resultado[par] = {
+                "preco": float(item.get("bidPrice")),
+                "variacao": float(item.get("percentageChange")),
+            }
+        except (TypeError, ValueError):
+            pass
+    return resultado, []
 
 
 def busca_okx(pares):
@@ -124,15 +213,17 @@ def classifica(ativo, dados):
     """Regras transparentes de leitura. Nada de 'IA mágica': cada critério é explicável."""
     preco = _num(dados.get("regularMarketPrice"))
     variacao = _num(dados.get("regularMarketChangePercent"))
-    pl = _num(dados.get("priceEarnings"))
+    pl = _num(dados.get("priceEarnings") or dados.get("trailingPE"))
+    dy = _num(dados.get("dividendYield"))
     min52 = _num(dados.get("fiftyTwoWeekLow"))
     max52 = _num(dados.get("fiftyTwoWeekHigh"))
     volume = _num(dados.get("regularMarketVolume"))
 
     etiquetas, pontos = [], 0.0
     if pl is not None:
+        dy_txt = f", DY {dy * 100:.1f}%" if dy is not None and dy > 0 else ""
         if pl > 0:
-            etiquetas.append(f"lucrativa (P/L {pl:.1f})")
+            etiquetas.append(f"lucrativa (P/L {pl:.1f}{dy_txt})")
             pontos += 2
         else:
             etiquetas.append(f"no prejuízo (P/L {pl:.1f})")
@@ -171,17 +262,33 @@ def monta_ronda(ativos, cripto, indices, token=None):
                  "avisos": []}
 
     if indices:
-        dados_indices, avisos_indices = busca_brapi(indices, token)
-        relatorio["avisos"].extend(avisos_indices)
-        for nome, dados in dados_indices.items():
-            relatorio["contexto"].append({
-                "nome": nome,
-                "preco": _num(dados.get("regularMarketPrice")),
-                "variacao": _num(dados.get("regularMarketChangePercent")),
-            })
+        indices_b3 = [i for i in indices if "-" not in i]
+        moedas = [i for i in indices if "-" in i]
+        if indices_b3:
+            dados_indices, avisos_indices = busca_brapi(indices_b3, token)
+            relatorio["avisos"].extend(avisos_indices)
+            for nome, dados in dados_indices.items():
+                relatorio["contexto"].append({
+                    "nome": nome,
+                    "preco": _num(dados.get("regularMarketPrice")),
+                    "variacao": _num(dados.get("regularMarketChangePercent")),
+                })
+        if moedas:
+            dados_moedas, avisos_moedas = busca_moeda(moedas, token)
+            relatorio["avisos"].extend(avisos_moedas)
+            for par, dados in dados_moedas.items():
+                relatorio["contexto"].append({
+                    "nome": par,
+                    "preco": dados.get("preco"),
+                    "variacao": dados.get("variacao"),
+                })
 
     dados_acoes, avisos_acoes = busca_brapi(ativos, token)
     relatorio["avisos"].extend(avisos_acoes)
+    obtidas = [t for t in ativos if t in dados_acoes]
+    for ticker, stats in busca_estatisticas(obtidas, token).items():
+        if ticker in dados_acoes:
+            dados_acoes[ticker].update({k: v for k, v in stats.items() if v is not None})
     analisados = []
     for ticker in ativos:
         dados = dados_acoes.get(ticker)
